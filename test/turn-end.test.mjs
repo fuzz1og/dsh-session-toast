@@ -155,3 +155,71 @@ test('a thrown observer is contained and logged, never propagated', () => {
   assert.equal(recorder.sent.length, 1);
   assert.match(recorder.sent[0].lines[2], /^会话 /);
 });
+
+test('a goal block does not also report the blocked turn that follows it', () => {
+  const harness = makeCtx();
+  const recorder = makeNotifier();
+  harness.provide('sessionTitle', { get: () => ({ title: '审计' }) });
+  apply(harness.ctx, {}, recorder.notify);
+  const agent = makeAgent();
+
+  // The goal blocks mid-turn: this is the fact that carries the reason.
+  harness.emit('agent/status', { agent, status: 'running' });
+  harness.emit('goal/changed', {
+    agent,
+    change: { operation: 'block', goal: { blockedReason: { code: 'blocked', message: 'no progress' } } },
+  });
+  // The same turn then closes with reason `blocked`, which adds nothing.
+  harness.emit('session/event', agent.session, { type: 'turn/end', data: { turn: 3, reason: { kind: 'blocked' } } });
+  harness.emit('agent/status', { agent, status: 'idle' });
+
+  assert.equal(recorder.sent.length, 1, 'one event must be one toast');
+  assert.match(recorder.sent[0].lines[1], /目标受阻：no progress/);
+});
+
+test('a later blocked turn still reports once the block is stale', () => {
+  const harness = makeCtx();
+  const recorder = makeNotifier();
+  harness.provide('sessionTitle', { get: () => ({ title: '审计' }) });
+  // A zero window makes the block stale immediately, standing in for the user
+  // starting a new turn well after seeing the blocked goal.
+  apply(harness.ctx, { dedupeMs: 0 }, recorder.notify);
+  const agent = makeAgent();
+
+  harness.emit('goal/changed', {
+    agent,
+    change: { operation: 'block', goal: { blockedReason: { message: 'no progress' } } },
+  });
+  harness.emit('agent/status', { agent, status: 'running' });
+  harness.emit('session/event', agent.session, { type: 'turn/end', data: { turn: 9, reason: { kind: 'blocked' } } });
+  harness.emit('agent/status', { agent, status: 'idle' });
+
+  assert.equal(recorder.sent.length, 2, 'the later turn is its own event');
+});
+
+test('a blocked turn with no preceding goal block still reports', () => {
+  const { recorder } = turnEnd({ reason: { kind: 'blocked' } });
+  assert.equal(recorder.sent.length, 1);
+  assert.match(recorder.sent[0].lines[1], /被阻塞/);
+});
+
+test('a completion right after a goal block is not swallowed', () => {
+  const harness = makeCtx();
+  const recorder = makeNotifier();
+  harness.provide('sessionTitle', { get: () => ({ title: '审计' }) });
+  apply(harness.ctx, {}, recorder.notify);
+  const agent = makeAgent();
+
+  harness.emit('goal/changed', {
+    agent,
+    change: { operation: 'block', goal: { blockedReason: { message: 'no progress' } } },
+  });
+  // A `completed` turn is a genuinely different outcome and must still land,
+  // even if it happens to close inside the dedupe window.
+  harness.emit('agent/status', { agent, status: 'running' });
+  harness.emit('session/event', agent.session, { type: 'turn/end', data: { turn: 4, reason: { kind: 'completed' } } });
+  harness.emit('agent/status', { agent, status: 'idle' });
+
+  assert.equal(recorder.sent.length, 2);
+  assert.match(recorder.sent[1].lines[1], /已完成/);
+});
