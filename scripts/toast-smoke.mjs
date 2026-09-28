@@ -12,7 +12,7 @@
  */
 
 import { existsSync } from 'node:fs';
-import { showToast, defaultPowershellPath, DSH_AUMID } from '../lib/toast.js';
+import { showToastAndWait, defaultPowershellPath, DSH_AUMID } from '../lib/toast.js';
 
 const powershell = defaultPowershellPath();
 
@@ -28,20 +28,13 @@ if (!existsSync(powershell)) {
 console.log(`powershell: ${powershell}`);
 console.log(`aumid:      ${DSH_AUMID}`);
 
-const child = showToast({
+const code = await showToastAndWait({
   lines: ['dsh-session-toast', '测试通知：通道正常', '这条通知由 smoke 脚本发出'],
   sound: true,
   scenario: 'reminder',
   powershellPath: powershell,
-  detach: false,
-}, (problem) => console.error(`delivery problem: ${problem}`));
+});
 
-if (child === undefined) {
-  console.error('dsh-session-toast: the notification process could not be started.');
-  process.exit(1);
-}
-
-const { code } = await new Promise((resolve) => child.on('close', (code, signal) => resolve({ code, signal })));
 if (code === 0) {
   console.log('toast raised — check the Windows notification center.');
   process.exit(0);

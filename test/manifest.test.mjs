@@ -71,9 +71,21 @@ test('the toast program carries dynamic text as base64, not as inline PowerShell
   assert.doesNotMatch(source, /\$\{JSON\.stringify\(input\.lines\)\}/);
 });
 
-test('the toast never blocks the caller', () => {
+test('the toast never blocks the caller but stays attached to this desktop', () => {
   const source = readFileSync(join(root, 'lib/toast.js'), 'utf8');
   assert.match(source, /stdio: 'ignore'/);
   assert.match(source, /windowsHide: true/);
-  assert.match(source, /if \(detach\) child\.unref\(\)/);
+  // The parent must not wait for the child and must not stay alive for it.
+  assert.match(source, /if \(unref\) child\.unref\(\)/);
+
+  // Regression guard, scoped to code: `detached: true` silently kills every
+  // toast on Windows — the Action Center history records nothing while the
+  // child still exits 0 — so the spawn options must always say false. Comments
+  // explain that history and are stripped before the check.
+  const code = source
+    .replace(/\/\*[\s\S]*?\*\//gu, '')
+    .replace(/(^|[^:])\/\/.*$/gmu, '$1');
+  assert.match(code, /detached: false/);
+  assert.doesNotMatch(code, /detached: true/);
+  assert.doesNotMatch(code, /detached: detach/);
 });
