@@ -16,6 +16,10 @@ DSH（DeepSeek Harness）主机插件：**会话相关事件发生时弹出真�
 
 通知由 **Windows 通知中心**承载：横幅 + 系统提示音，点开后留在通知中心可回看。显示名为 **DeepSeek Harness**，带官方鲸鱼图标。
 
+**点击通知会把 DSH 桌面窗口带到前台**（最小化时恢复并聚焦，已有窗口不会被新开一个）。桌面壳注册了 `dsh` 协议（`HKCU\Software\Classes\dsh\shell\open\command` → `"...\DeepSeek Harness.exe" "%1"`），其 `open-url` 处理器用 `dsh://open` 触发 `focusPrimaryWindow()`；若窗口已被关闭，则会重新创建。
+
+注意：**深链不带会话 id**。壳里 `open-url` 是拿 URL 和字面量 `dsh://open` 比较的，任何其它 URL 都被忽略，所以没有受支持的方式让通知直接跳到某个会话——点击只是把应用拉回前台。会话名写在通知正文里。
+
 ## 为什么是自研而不是装现成的
 
 社区里有二十来个同类插件，但对 **DSH 0.2.0** 基本都装不上——不是功能不行，是撞上了 0.2.0 起的一道硬兼容门。
@@ -76,6 +80,8 @@ plugin_manager  install_bundle  target: "github:你的用户名/dsh-session-toas
     dedupeMs: 2000                # 同一事件的去重窗口
     suppressWhileGoalActive: true # goal 自动续跑时，只在受阻时提醒，不每轮打扰
     includeSubagents: false       # true = 子代理会话的回合也通知
+    focusOnClick: true            # 点击通知把 DSH 窗口带到前台
+    activationUri: 'dsh://open'   # 点击时打开的 URI；配合 focusOnClick: false 可让通知变成纯提示
 ```
 
 字段都是 `.volatile()`，配合 Settings 页可热改，不必重启。

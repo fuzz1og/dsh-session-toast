@@ -62,6 +62,23 @@ test('the plugin reads every collaborator optionally rather than injecting it', 
   assert.match(source, /ctx\.inject\(\['commands'\]/);
 });
 
+test('clicking the toast focuses the desktop window through the shell protocol', () => {
+  const source = readFileSync(join(root, 'lib/toast.js'), 'utf8');
+  // The activation attributes must ride on the <toast> element, and the URI
+  // must travel as a base64 payload like every other dynamic value.
+  assert.match(source, /activationType="protocol" launch=/);
+  assert.match(source, /export const DSH_ACTIVATION_URI = 'dsh:\/\/open'/);
+  assert.match(source, /\$launchValue = B64/);
+  // The URI must be escaped before it reaches the XML attribute.
+  assert.match(source, /' activationType="protocol" launch="' \+ \(X \$launchValue\)/);
+});
+
+test('the toast is click-inert only when the caller asks for that', () => {
+  const source = readFileSync(join(root, 'lib/index.js'), 'utf8');
+  assert.match(source, /focusOnClick: true/);
+  assert.match(source, /launch: focus \? read\('activationUri'\) : ''/);
+});
+
 test('the toast program carries dynamic text as base64, not as inline PowerShell', () => {
   const source = readFileSync(join(root, 'lib/toast.js'), 'utf8');
   assert.match(source, /function payload\(value\)/);
