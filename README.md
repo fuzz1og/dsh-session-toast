@@ -4,6 +4,14 @@ DSH（DeepSeek Harness）主机插件：**会话相关事件发生时弹出真�
 
 切到别的窗口干活时，不用再盯着 DSH 看它跑完没有。
 
+> **English:** A DeepSeek Harness host plugin that raises real Windows system
+> notifications when a session turn finishes, errors, aborts or hits the token
+> limit, and when the agent parks on a question, waits for your approval, or
+> reports a blocked goal. Clicking a notification brings the DSH window to the
+> front. Zero runtime dependencies, and it declares no `@deepseek-ai/dsh-*`
+> peerDependencies on purpose — see [为什么是自研](#为什么是自研而不是装现成的).
+> Windows only.
+
 | 通知 | 触发接缝 | 文案示例 |
 | --- | --- | --- |
 | 会话完成 | `agent/status` `running → idle`，且该会话最后一条 `turn/end` 的 reason 为 `completed` | `DeepSeek Harness` / `已完成` / `修复登录 500` |
@@ -52,13 +60,30 @@ semver.satisfies(runtimeVersion, range, { includePrerelease: true })
 
 ## 安装
 
-桌面 profile 的 `dsh` CLI 被 Electron 独占，**命令行装不了**，走应用内插件页或 `plugin_manager` 工具：
+桌面 profile 的 `dsh` CLI 被 Electron 独占，**命令行装不了**。用应用内「插件」页，或让 agent 调用 `plugin_manager` 工具，两种方式走的是同一套代码路径（`installBundle`）：
 
 ```
-plugin_manager  install_bundle  target: "github:你的用户名/dsh-session-toast"
+plugin_manager  install_bundle  target: "github:fuzz1og/dsh-session-toast"
 ```
 
-包声明了 `dsh.bundle.patch`，安装时 reconcile 会自动把它追加进 profile 的 `dsh.profile.bundles`，重启 DSH 即生效。
+包声明了 `dsh.bundle.patch`，安装时 reconcile 会自动把它追加进 profile 的 `dsh.profile.bundles`。
+
+### 装完必须重启 DSH
+
+**热重载不会替换已加载的插件代码**，这一点已实测：
+
+- Cordis 的 Loader 用裸说明符 `import("dsh-session-toast")` 加载插件，URL 恒定；而 ESM 按 URL 缓存模块，**改了磁盘文件也不会重新求值**。
+- 给入口加 cache-busting query 也救不了：入口的**相对依赖**（本包的 `./toast.js`）仍会命中缓存。实测 `index.js?v=2` 返回的仍是旧 `toast.js`。
+- 停用/启用、以及**完全卸载后重装**都不重新 import 模块——卸载只清 entry 与磁盘文件，模块缓存仍持有旧对象。
+
+判断宿主内存里跑的是哪一版，可以看该行的 Config schema 字段数：
+
+| schema 字段 | 内存中的版本 |
+| --- | --- |
+| 12 个（无 `focusOnClick` / `activationUri`） | 最初版，`detached: true`，**通知不会上屏** |
+| 14 个（含上述两项） | 修复后版本，通知正常 |
+
+改动这个插件后，**重启 DSH** 是对唯一可靠的方式。
 
 ## 配置
 
