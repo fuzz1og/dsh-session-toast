@@ -43,5 +43,9 @@
     "type": "git",
     "url": "git+https://github.com/fuzz1og/dsh-session-toast.git"
   },
+  "homepage": "https://github.com/fuzz1og/dsh-session-toast#readme",
+  "bugs": {
+    "url": "https://github.com/fuzz1og/dsh-session-toast/issues"
+  },
   "author": "fuzz1og"
 }
