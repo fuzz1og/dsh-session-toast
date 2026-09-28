@@ -1,0 +1,21 @@
+# dsh-session-toast bundle patch: mount this plugin into a profile's
+# composition tree when the profile carries it in `dsh.profile.bundles`.
+#
+# Installed through the plugin manager (the desktop profile's `dsh` CLI is owned
+# by the Electron shell, so use the in-app plugin page or the `plugin_manager`
+# tool):
+#
+#   plugin_manager install_bundle  target: "github:fuzz1og/dsh-session-toast"
+#
+# the reconcile step appends this package to the profile's
+# `dsh.profile.bundles` because this package.json declares
+# `dsh.bundle.patch`. At boot, app-boot applies every bundle's patch list in
+# bundle order; this insert list is what actually mounts the notifier — no
+# manual patch editing needed.
+#
+# All row config stays at schema defaults. To change a switch, override this
+# row's config by id in the profile's own cordis.patch.yml user layer — do NOT
+# insert a second row with the same id.
+- insert:
+    - id: session-toast
+      name: 'dsh-session-toast'
