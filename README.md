@@ -107,7 +107,7 @@ plugin_manager  install_bundle  target: "github:fuzz1og/dsh-session-toast"
 
 用不到时把它关掉：`audit: false`。
 
-## 关键约束：监听器必须 `{ global: true }`
+## 关键约束：监听器一律 `{ global: true }`
 
 Cordis 解析一次 dispatch 时用：
 
@@ -115,18 +115,18 @@ Cordis 解析一次 dispatch 时用：
 filter((hook) => hook.global || !filter || filter.call(thisArg, hook.ctx))
 ```
 
-没有 `global: true` 时，监听器**只在事件 carrier 位于该监听上下文的 scope 祖先链上**才被接纳。实测（真实 cordis + dsh-scope，宿主 Electron，带 root 阳性对照，插件 scope 与 agent scope 为**兄弟**关系——即 include/group 嵌套产生的真实拓扑）：
+`hook.global` **短路绕过整个 scope 过滤**。
+
+实测（真实 cordis + dsh-scope，宿主 Electron，带 root 阳性对照）：
 
 ```
-callbacks=2
-hits: {"plain":0,"global":1,"rootControl":1}
-  plain listener admitted : false      <- 普通 ctx.on
-  global listener admitted: true       <- { global: true }
+hits: { control: 1, plainFiber: 1, plainFiberGlobal: 1, scopedPlain: 0, scopedGlobal: 1 }
 ```
 
-**这就是「所有零件单独验证都通过、真实宿主却从不触发」的根因**：把监听器注册在 **root** context 上的测试全部会通过（root 是所有 agent scope 的祖先），而真实 composition 把它嵌在与 agent scope 平级的子树里，于是被静默过滤——插件从未调用过投递。
+- **Loader 实际挂载方式**（`registry.plugin()` 得到无 scope tag 的 fiber context）：不加 `global: true` **也能**收到事件。所以这个选项**不是**必需的。
+- 但若上下文带 scope tag 且与事件 carrier 不构成祖先链（如 `createScope` 拓扑），普通监听器会被**静默过滤**；`global: true` 能绕过。
 
-内置的 `@deepseek-ai/dsh-session-title` 监听 `llm/stream` 时同样用 `{ global: true }`。本插件六条接缝**全部**这么注册，并有回归测试锁死。
+因此本插件六条接缝**全部**显式带 `{ global: true }`：对"全局通知器"这个语义来说，它想要的就是「无视 scope 隔离、收到所有 agent 事件」，与内置的 `@deepseek-ai/dsh-session-title` 监听 `llm/stream` 的做法一致。这是**语义正确且更稳**的选择，但**不是**任何已知故障的修复——曾经一度被误判为根因，实测已否定。
 
 ## 配置
 
