@@ -81,9 +81,52 @@ plugin_manager  install_bundle  target: "github:fuzz1og/dsh-session-toast"
 | schema 字段 | 内存中的版本 |
 | --- | --- |
 | 12 个（无 `focusOnClick` / `activationUri`） | 最初版，`detached: true`，**通知不会上屏** |
-| 14 个（含上述两项） | 修复后版本，通知正常 |
+| 16 个（含 `focusOnClick` / `activationUri` / `audit` / `auditPath`） | 当前版本 |
 
 改动这个插件后，**重启 DSH** 是对唯一可靠的方式。
+
+## 排查：为什么没弹
+
+桌面宿主**不提供给插件任何可观测通道**——插件的 stdout 是 pipe 给 Electron 进程（不落盘），宿主进程也没有 inspector 端口。所以「监听器根本没运行」和「运行了但投递失败」从外部**无法区分**。
+
+本插件因此**默认开启审计日志**，每个决策点写一行 JSONL 到 `%TEMP%\dsh-session-toast.log`：
+
+```jsonc
+{"stage":"apply",    "hasConfig":true, "inject":"[]"}
+{"stage":"skip",     "seam":"agent/status", "why":"not-running-to-idle", "next":"running"}
+{"stage":"observed", "seam":"session/event", "turn":1, "reason":"completed"}
+{"stage":"notify",   "seam":"agent/status", "kind":"completed"}
+{"stage":"deliver",  "lines":[...], "aumid":"com.deepseek.dsh"}
+{"stage":"delivered","code":0}
+```
+
+- 只有 `deliver` 之后的 `code`（0 成功）才代表 Windows 已接收。`deliver` 出现但没有 `delivered`，说明投递进程起不来。
+- **没有 `apply`** → 插件没被挂载。
+- **只有 `apply`，没有任何 `skip`/`notify`** → 监听器被 Cordis 的 scope 过滤掉了（见下）。
+- **有 `skip`** → 看 `why` 字段，它直接说明被哪个分支拦下。
+
+用不到时把它关掉：`audit: false`。
+
+## 关键约束：监听器必须 `{ global: true }`
+
+Cordis 解析一次 dispatch 时用：
+
+```js
+filter((hook) => hook.global || !filter || filter.call(thisArg, hook.ctx))
+```
+
+没有 `global: true` 时，监听器**只在事件 carrier 位于该监听上下文的 scope 祖先链上**才被接纳。实测（真实 cordis + dsh-scope，宿主 Electron，带 root 阳性对照，插件 scope 与 agent scope 为**兄弟**关系——即 include/group 嵌套产生的真实拓扑）：
+
+```
+callbacks=2
+hits: {"plain":0,"global":1,"rootControl":1}
+  plain listener admitted : false      <- 普通 ctx.on
+  global listener admitted: true       <- { global: true }
+```
+
+**这就是「所有零件单独验证都通过、真实宿主却从不触发」的根因**：把监听器注册在 **root** context 上的测试全部会通过（root 是所有 agent scope 的祖先），而真实 composition 把它嵌在与 agent scope 平级的子树里，于是被静默过滤——插件从未调用过投递。
+
+内置的 `@deepseek-ai/dsh-session-title` 监听 `llm/stream` 时同样用 `{ global: true }`。本插件六条接缝**全部**这么注册，并有回归测试锁死。
 
 ## 配置
 
@@ -107,6 +150,8 @@ plugin_manager  install_bundle  target: "github:fuzz1og/dsh-session-toast"
     includeSubagents: false       # true = 子代理会话的回合也通知
     focusOnClick: true            # 点击通知把 DSH 窗口带到前台
     activationUri: 'dsh://open'   # 点击时打开的 URI；配合 focusOnClick: false 可让通知变成纯提示
+    audit: true                   # 写决策审计到 %TEMP%\dsh-session-toast.log
+    auditPath: ''                 # 留空用默认路径
 ```
 
 字段都是 `.volatile()`，配合 Settings 页可热改，不必重启。
