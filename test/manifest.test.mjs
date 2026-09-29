@@ -52,6 +52,31 @@ test('a missing schemastery degrades Config instead of aborting the profile', ()
   assert.doesNotMatch(source, /^import .*schemastery/m);
 });
 
+test('every host listener is registered with global: true', async () => {
+  const { apply } = await import('../lib/index.js');
+  const { makeCtx, makeNotifier } = await import('./harness.mjs');
+  const harness = makeCtx();
+  apply(harness.ctx, {}, makeNotifier().notify);
+
+  // Cordis resolves a dispatch with
+  //   filter((hook) => hook.global || !filter || filter.call(thisArg, hook.ctx))
+  // so only `global: true` short-circuits scope admission. Without it a
+  // listener is admitted only when the dispatching carrier descends from the
+  // listening context's scope chain — which the flat tree a unit test builds
+  // cannot reproduce, but the live composition (an agent carrier for
+  // `agent/status`, a session scope for `session/event`, `isolate` groups) can
+  // silently deny.
+  const events = ['agent/status', 'session/event', 'agent/disposed',
+    'user-questions/request', 'approval/request', 'goal/changed'];
+  for (const event of events) {
+    const opts = harness.options.get(event) ?? [];
+    assert.ok(opts.length > 0, `${event} must have a listener`);
+    for (const o of opts) {
+      assert.equal(o?.global, true, `${event} listener must be registered with { global: true }`);
+    }
+  }
+});
+
 test('the plugin reads every collaborator optionally rather than injecting it', () => {
   const source = readFileSync(join(root, 'lib/index.js'), 'utf8');
   for (const service of ['goals', 'sessionTitle']) {

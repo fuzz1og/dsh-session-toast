@@ -14,6 +14,8 @@ export function makeCtx() {
   const disposers = [];
   const warnings = [];
   const pendingInjects = [];
+  /** Registration options per event, so a test can assert `global: true`. */
+  const options = new Map();
 
   const ctx = {
     logger: {
@@ -21,9 +23,11 @@ export function makeCtx() {
       info: () => {},
       debug: () => {},
     },
-    on(event, handler) {
+    on(event, handler, opts) {
       if (!listeners.has(event)) listeners.set(event, []);
       listeners.get(event).push(handler);
+      if (!options.has(event)) options.set(event, []);
+      options.get(event).push(opts);
       return () => {
         const list = listeners.get(event) ?? [];
         const index = list.indexOf(handler);
@@ -92,6 +96,7 @@ export function makeCtx() {
     waterfall,
     services,
     warnings,
+    options,
     provide,
     listenerCount: (event) => (listeners.get(event) ?? []).length,
     disposeAll: () => {
